@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Instrução Visual por Fotos</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { font-size: 1.5em; }
+    #preview { display: flex; flex-wrap: wrap; gap: 15px; }
+    .item { border: 1px solid #ccc; border-radius: 8px; padding: 10px; width: 200px; background: #f9f9f9; position: relative; }
+    .item img { width: 100%; border-radius: 5px; }
+    .item textarea, .item input { width: 100%; margin-top: 5px; }
+    .btns { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .item .remove { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; }
+    .drag-handle { cursor: grab; background: #ddd; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; display: inline-block; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+
+<h1>📸 Instrução por Fotos</h1>
+
+<input type="file" id="photoInput" accept="image/*" multiple /><br><br>
+
+<div class="btns">
+  <button onclick="saveSequence()">💾 Salvar</button>
+  <button onclick="loadSequence()">📂 Carregar</button>
+  <button onclick="exportAsHTML()">🌐 Exportar HTML</button>
+  <button onclick="exportAsPDF()">📄 Exportar PDF</button>
+  <button onclick="clearAll()">🗑 Limpar Tudo</button>
+</div>
+
+<hr>
+
+<div id="preview"></div>
+
+<!-- jsPDF for PDF export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+  let photoList = [];
+
+  document.getElementById('photoInput').addEventListener('change', (event) => {
+    const files = Array.from(event.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        photoList.push({ src: e.target.result, title: "", description: "" });
+        updatePreview();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  function updatePreview() {
+    const preview = document.getElementById('preview');
+    preview.innerHTML = '';
+    photoList.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.draggable = true;
+      div.ondragstart = (e) => e.dataTransfer.setData('text/plain', index);
+      div.ondragover = (e) => e.preventDefault();
+      div.ondrop = (e) => {
+        const from = e.dataTransfer.getData('text/plain');
+        const to = index;
+        const moved = photoList.splice(from, 1)[0];
+        photoList.splice(to, 0, moved);
+        updatePreview();
+      };
+
+      div.innerHTML = `
+        <div class="drag-handle">☰</div>
+        <button class="remove" onclick="removePhoto(${index})">×</button>
+        <img src="${item.src}" />
+        <input placeholder="Título" value="${item.title}" oninput="photoList[${index}].title = this.value" />
+        <textarea rows="3" placeholder="Descrição" oninput="photoList[${index}].description = this.value">${item.description}</textarea>
+      `;
+      preview.appendChild(div);
+    });
+  }
+
+  function removePhoto(index) {
+    photoList.splice(index, 1);
+    updatePreview();
+  }
+
+  function saveSequence() {
+    localStorage.setItem('photoSequenceV2', JSON.stringify(photoList));
+    alert('Sequência salva!');
+  }
+
+  function loadSequence() {
+    const saved = localStorage.getItem('photoSequenceV2');
+    if (saved) {
+      photoList = JSON.parse(saved);
+      updatePreview();
+    } else {
+      alert('Nenhuma sequência salva.');
+    }
+  }
+
+  function clearAll() {
+    if (confirm("Deseja limpar tudo?")) {
+      photoList = [];
+      localStorage.removeItem('photoSequenceV2');
+      updatePreview();
+    }
+  }
+
+  function exportAsHTML() {
+    const win = window.open('', '_blank');
+    win.document.write('<html><head><title>Instrução Exportada</title><style>body{font-family:sans-serif;} img{width:100%;max-width:400px;} .block{margin-bottom:20px;}</style></head><body>');
+    photoList.forEach(p => {
+      win.document.write(`<div class="block"><h3>${p.title}</h3><img src="${p.src}" /><p>${p.description}</p></div>`);
+    });
+    win.document.write('</body></html>');
+    win.document.close();
+  }
+
+  async function exportAsPDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF();
+    for (let i = 0; i < photoList.length; i++) {
+      const p = photoList[i];
+      if (i > 0) pdf.addPage();
+      pdf.text(p.title, 10, 10);
+      const imgProps = pdf.getImageProperties(p.src);
+      const ratio = imgProps.width / imgProps.height;
+      const width = 180;
+      const height = width / ratio;
+      pdf.addImage(p.src, 'JPEG', 15, 20, width, height);
+      pdf.text(p.description, 10, 20 + height + 10);
+    }
+    pdf.save("instrucao_fotos.pdf");
+  }
+</script>
+
+</body>
+</html>
