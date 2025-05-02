@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Instrução Visual por Fotos</title>
+  <title>Instrução Visual por Fotos, Vídeos e Áudios</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     h1 { font-size: 1.5em; }
     #preview { display: flex; flex-wrap: wrap; gap: 15px; }
     .item { border: 1px solid #ccc; border-radius: 8px; padding: 10px; width: 200px; background: #f9f9f9; position: relative; }
-    .item img { width: 100%; border-radius: 5px; }
+    .item img, .item video { width: 100%; border-radius: 5px; }
+    .item audio { width: 100%; }
     .item textarea, .item input { width: 100%; margin-top: 5px; }
     .btns { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
     .item .remove { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; }
@@ -18,11 +19,13 @@
 </head>
 <body>
 
-<h1>📸 Instrução por Fotos</h1>
+<h1>📸 Instrução por Fotos, Vídeos e Áudios</h1>
 
-<input type="file" id="photoInput" accept="image/*" multiple /><br><br>
-
+<!-- Botões de ação para capturar mídias -->
 <div class="btns">
+  <button onclick="openCamera()">📷 Tirar Foto</button>
+  <button onclick="startVideoRecording()">🎥 Gravar Vídeo</button>
+  <button onclick="startAudioRecording()">🎤 Gravar Áudio</button>
   <button onclick="saveSequence()">💾 Salvar</button>
   <button onclick="loadSequence()">📂 Carregar</button>
   <button onclick="exportAsHTML()">🌐 Exportar HTML</button>
@@ -34,24 +37,116 @@
 
 <div id="preview"></div>
 
+<!-- Câmera para tirar fotos -->
+<div id="camera" style="display: none;">
+  <video id="videoElement" width="320" height="240" autoplay></video>
+  <button onclick="capturePhoto()">Tirar Foto</button>
+  <button onclick="closeCamera()">Fechar Câmera</button>
+</div>
+
+<!-- Gravação de áudio -->
+<div id="audioControls" style="display: none;">
+  <button onclick="stopAudioRecording()">Parar Gravação</button>
+  <audio id="audioPlayback" controls></audio>
+</div>
+
 <!-- jsPDF for PDF export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
   let photoList = [];
+  let videoBlob = null;
+  let audioBlob = null;
+  let mediaRecorder;
+  let audioRecorder;
+  
+  // Capturar foto
+  function openCamera() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        const videoElement = document.getElementById('videoElement');
+        videoElement.srcObject = stream;
+        videoElement.style.display = 'block';
+        document.getElementById('camera').style.display = 'block';
+      })
+      .catch(error => console.error("Erro ao acessar a câmera", error));
+  }
 
-  document.getElementById('photoInput').addEventListener('change', (event) => {
-    const files = Array.from(event.target.files);
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        photoList.push({ src: e.target.result, title: "", description: "" });
-        updatePreview();
-      };
-      reader.readAsDataURL(file);
-    });
-  });
+  function capturePhoto() {
+    const videoElement = document.getElementById('videoElement');
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    canvas.getContext('2d').drawImage(videoElement, 0, 0);
+    const photoData = canvas.toDataURL('image/png');
+    photoList.push({ src: photoData, title: "", description: "", type: "image" });
+    updatePreview();
+    closeCamera();
+  }
 
+  function closeCamera() {
+    const videoElement = document.getElementById('videoElement');
+    const stream = videoElement.srcObject;
+    const tracks = stream.getTracks();
+    tracks.forEach(track => track.stop());
+    document.getElementById('camera').style.display = 'none';
+  }
+
+  // Gravar vídeo
+  function startVideoRecording() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        const videoElement = document.createElement('video');
+        videoElement.srcObject = stream;
+        videoElement.controls = true;
+        videoElement.style.width = '100%';
+        document.getElementById('preview').appendChild(videoElement);
+
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = event => {
+          videoBlob = event.data;
+          const videoUrl = URL.createObjectURL(videoBlob);
+          videoElement.src = videoUrl;
+          photoList.push({ src: videoUrl, title: "", description: "", type: "video" });
+        };
+
+        mediaRecorder.start();
+        setTimeout(() => {
+          stopVideoRecording(stream);
+        }, 10000); // Gravação por 10 segundos
+      })
+      .catch(error => console.error("Erro ao acessar o vídeo", error));
+  }
+
+  function stopVideoRecording(stream) {
+    mediaRecorder.stop();
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  // Gravar áudio
+  function startAudioRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        audioRecorder = new MediaRecorder(stream);
+        audioRecorder.ondataavailable = event => {
+          audioBlob = event.data;
+          const audioUrl = URL.createObjectURL(audioBlob);
+          document.getElementById('audioPlayback').src = audioUrl;
+          photoList.push({ src: audioUrl, title: "", description: "", type: "audio" });
+        };
+
+        audioRecorder.start();
+        document.getElementById('audioControls').style.display = 'block';
+      })
+      .catch(error => console.error("Erro ao acessar o áudio", error));
+  }
+
+  function stopAudioRecording() {
+    audioRecorder.stop();
+    document.getElementById('audioControls').style.display = 'none';
+  }
+
+  // Atualizar a visualização
   function updatePreview() {
     const preview = document.getElementById('preview');
     preview.innerHTML = '';
@@ -72,7 +167,9 @@
       div.innerHTML = `
         <div class="drag-handle">☰</div>
         <button class="remove" onclick="removePhoto(${index})">×</button>
-        <img src="${item.src}" />
+        ${item.type === "image" ? `<img src="${item.src}" />` : ''}
+        ${item.type === "video" ? `<video src="${item.src}" controls></video>` : ''}
+        ${item.type === "audio" ? `<audio src="${item.src}" controls></audio>` : ''}
         <input placeholder="Título" value="${item.title}" oninput="photoList[${index}].title = this.value" />
         <textarea rows="3" placeholder="Descrição" oninput="photoList[${index}].description = this.value">${item.description}</textarea>
       `;
@@ -85,13 +182,14 @@
     updatePreview();
   }
 
+  // Funções para salvar e carregar
   function saveSequence() {
-    localStorage.setItem('photoSequenceV2', JSON.stringify(photoList));
+    localStorage.setItem('mediaSequence', JSON.stringify(photoList));
     alert('Sequência salva!');
   }
 
   function loadSequence() {
-    const saved = localStorage.getItem('photoSequenceV2');
+    const saved = localStorage.getItem('mediaSequence');
     if (saved) {
       photoList = JSON.parse(saved);
       updatePreview();
@@ -103,16 +201,19 @@
   function clearAll() {
     if (confirm("Deseja limpar tudo?")) {
       photoList = [];
-      localStorage.removeItem('photoSequenceV2');
+      localStorage.removeItem('mediaSequence');
       updatePreview();
     }
   }
 
   function exportAsHTML() {
     const win = window.open('', '_blank');
-    win.document.write('<html><head><title>Instrução Exportada</title><style>body{font-family:sans-serif;} img{width:100%;max-width:400px;} .block{margin-bottom:20px;}</style></head><body>');
+    win.document.write('<html><head><title>Instrução Exportada</title><style>body{font-family:sans-serif;} img{width:100%;max-width:400px;} video{width:100%;max-width:400px;} audio{width:100%;}</style></head><body>');
     photoList.forEach(p => {
-      win.document.write(`<div class="block"><h3>${p.title}</h3><img src="${p.src}" /><p>${p.description}</p></div>`);
+      win.document.write(`<div><h3>${p.title}</h3>${p.type === "image" ? `<img src="${p.src}" />` : ''}
+        ${p.type === "video" ? `<video src="${p.src}" controls></video>` : ''}
+        ${p.type === "audio" ? `<audio src="${p.src}" controls></audio>` : ''}
+        <p>${p.description}</p></div>`);
     });
     win.document.write('</body></html>');
     win.document.close();
@@ -125,14 +226,18 @@
       const p = photoList[i];
       if (i > 0) pdf.addPage();
       pdf.text(p.title, 10, 10);
-      const imgProps = pdf.getImageProperties(p.src);
-      const ratio = imgProps.width / imgProps.height;
-      const width = 180;
-      const height = width / ratio;
-      pdf.addImage(p.src, 'JPEG', 15, 20, width, height);
-      pdf.text(p.description, 10, 20 + height + 10);
+      if (p.type === 'image') {
+        const imgProps = pdf.getImageProperties(p.src);
+        const ratio = imgProps.width / imgProps.height;
+        const width = 180;
+        const height = width / ratio;
+        pdf.addImage(p.src, 'PNG', 10, 20, width, height);
+      } else if (p.type === 'video' || p.type === 'audio') {
+        pdf.text('Mídia: ' + p.type, 10, 20);
+      }
+      pdf.text(p.description, 10, 40);
     }
-    pdf.save("instrucao_fotos.pdf");
+    pdf.save("instrucao.pdf");
   }
 </script>
 
