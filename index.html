@@ -62,7 +62,9 @@
   
   // Capturar foto
   function openCamera() {
-    navigator.mediaDevices.getUserMedia({ video: true })
+    navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: { exact: "environment" } } // Forçar o uso da câmera traseira
+    })
       .then(stream => {
         const videoElement = document.getElementById('videoElement');
         videoElement.srcObject = stream;
@@ -94,7 +96,9 @@
 
   // Gravar vídeo
   function startVideoRecording() {
-    navigator.mediaDevices.getUserMedia({ video: true })
+    navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: { exact: "environment" } } // Forçar o uso da câmera traseira
+    })
       .then(stream => {
         const videoElement = document.createElement('video');
         videoElement.srcObject = stream;
@@ -206,38 +210,48 @@
     }
   }
 
+  // Exportar HTML
   function exportAsHTML() {
-    const win = window.open('', '_blank');
-    win.document.write('<html><head><title>Instrução Exportada</title><style>body{font-family:sans-serif;} img{width:100%;max-width:400px;} video{width:100%;max-width:400px;} audio{width:100%;}</style></head><body>');
-    photoList.forEach(p => {
-      win.document.write(`<div><h3>${p.title}</h3>${p.type === "image" ? `<img src="${p.src}" />` : ''}
-        ${p.type === "video" ? `<video src="${p.src}" controls></video>` : ''}
-        ${p.type === "audio" ? `<audio src="${p.src}" controls></audio>` : ''}
-        <p>${p.description}</p></div>`);
-    });
-    win.document.write('</body></html>');
-    win.document.close();
+    const htmlContent = photoList.map(item => `
+      <div>
+        <h2>${item.title}</h2>
+        <p>${item.description}</p>
+        ${item.type === 'image' ? `<img src="${item.src}" />` : ''}
+        ${item.type === 'video' ? `<video src="${item.src}" controls></video>` : ''}
+        ${item.type === 'audio' ? `<audio src="${item.src}" controls></audio>` : ''}
+      </div>
+    `).join('');
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'instrucao.html';
+    link.click();
   }
 
-  async function exportAsPDF() {
+  // Exportar PDF
+  function exportAsPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF();
-    for (let i = 0; i < photoList.length; i++) {
-      const p = photoList[i];
-      if (i > 0) pdf.addPage();
-      pdf.text(p.title, 10, 10);
-      if (p.type === 'image') {
-        const imgProps = pdf.getImageProperties(p.src);
-        const ratio = imgProps.width / imgProps.height;
+    let yPosition = 20;
+
+    photoList.forEach(item => {
+      if (item.type === 'image') {
+        const img = new Image();
+        img.src = item.src;
+        const ratio = img.width / img.height;
         const width = 180;
         const height = width / ratio;
-        pdf.addImage(p.src, 'PNG', 10, 20, width, height);
-      } else if (p.type === 'video' || p.type === 'audio') {
-        pdf.text('Mídia: ' + p.type, 10, 20);
+        pdf.addImage(item.src, 'PNG', 10, yPosition, width, height);
+        yPosition += height + 10;
+      } else if (item.type === 'video' || item.type === 'audio') {
+        pdf.text(`Mídia: ${item.type}`, 10, yPosition);
+        yPosition += 10;
       }
-      pdf.text(p.description, 10, 40);
-    }
-    pdf.save("instrucao.pdf");
+      pdf.text(item.description, 10, yPosition);
+      yPosition += 20;
+    });
+
+    pdf.save('instrucao.pdf');
   }
 </script>
 
